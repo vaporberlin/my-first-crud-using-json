@@ -1,53 +1,33 @@
+import Vapor
+
 final class UserController {
-  
-  func list(_ req: Request) throws -> ResponseRepresentable {
-    let list = try User.all()
-    return try list.makeJSON()
-  }
-  
-  func create(_ req: Request) throws -> ResponseRepresentable {
-    guard let json = req.json else {
-      return "missing json"
+
+    // view with users
+    func list(_ req: Request) throws -> Future<[User]> {
+        return User.query(on: req).all()
     }
-    
-    var user: User
-    do { user = try User(json: json) }
-    catch { return "could not initiate user with given json" }
-    
-    try user.save()
-    return try user.makeJSON()
-  }
-  
-  func update(_ req: Request) throws -> ResponseRepresentable {
-    guard let userId = req.parameters["id"]?.int else {
-      return "no user id provided"
+
+    // create a new user
+    func create(_ req: Request) throws -> Future<User> {
+        return try req.content.decode(User.self).flatMap { user in
+            return user.save(on: req)
+        }
     }
-    
-    guard let json = req.json else {
-      return "missing json"
+
+    // update a user
+    func update(_ req: Request) throws -> Future<User> {
+        return try req.parameters.next(User.self).flatMap { user in
+            return try req.content.decode(User.self).flatMap { newUser in
+                user.username = newUser.username
+                return user.save(on: req)
+            }
+        }
     }
-    
-    guard let user = try User.find(userId) else {
-      return "could not find user with id \(userId)"
+
+    // delete a user
+    func delete(_ req: Request) throws -> Future<HTTPStatus> {
+        return try req.parameters.next(User.self).flatMap { user in
+            return user.delete(on: req)
+        }.transform(to: .ok)
     }
-    
-    // set username if the field exists else reassign old value
-    user.username = try json.get("username") ?? user.username
-    
-    try user.save()
-    return try user.makeJSON()
-  }
-  
-  func delete(_ req: Request) throws -> ResponseRepresentable {
-    guard let userId = req.parameters["id"]?.int else {
-      return "no user id provided"
-    }
-    
-    guard let user = try User.find(userId) else {
-      return "could not find user with id \(userId)"
-    }
-    
-    try user.delete()
-    return Response(status: .ok)
-  }
 }
